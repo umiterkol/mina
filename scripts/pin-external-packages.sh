@@ -6,7 +6,8 @@ eval $(opam config env)
 # uninstall here
 opam uninstall extlib
 
-PACKAGES="ocaml-sodium rpc_parallel ocaml-extlib async_kernel coda_base58 graphql_ppx ppx_deriving_yojson"
+# update and pin packages, used by CI
+PACKAGES="ocaml-sodium rpc_parallel ocaml-extlib async_kernel coda_base58 ppx_deriving_yojson"
 
 git submodule sync && git submodule update --init --recursive
 
