@@ -7988,7 +7988,15 @@
               "description":
                 "Transaction fee paid by the fee-payer for the Snapp transaction",
               "args": [],
-              "type": { "kind": "SCALAR", "name": "UInt64", "ofType": null },
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "UInt64",
+                  "ofType": null
+                }
+              },
               "isDeprecated": false,
               "deprecationReason": null
             },
@@ -11229,7 +11237,7 @@
           "description": null,
           "fields": [
             {
-              "name": "initialMininumBalance",
+              "name": "initialMinimumBalance",
               "description":
                 "The initial minimum balance for a time-locked account",
               "args": [],
