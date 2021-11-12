@@ -2382,7 +2382,7 @@ module Types = struct
         obj "PartyBody" ~doc:"Body component of a Snapp Party"
           ~coerce:
             (fun pk update_result token_id delta increment_nonce events
-                 sequence_events call_data depth ->
+                 sequence_events call_data depth use_full_commitment ->
             try
               let open Result.Let_syntax in
               let%bind pk =
@@ -2411,6 +2411,7 @@ module Types = struct
                 ; sequence_events
                 ; call_data
                 ; depth
+                ; use_full_commitment
                 }
             with exn -> Error (Exn.to_string exn))
           ~fields:
@@ -2453,6 +2454,11 @@ module Types = struct
                   "The number of nested snapp calls in the transaction before \
                    reaching this party."
                 ~typ:(non_null int)
+            ; arg "use_full_commitment"
+                ~doc:
+                  "Use the full or partial commitment when checking the party \
+                   predicate."
+                ~typ:(non_null bool)
             ]
 
       let snapp_fee_payer_party_body =
@@ -2488,6 +2494,7 @@ module Types = struct
               ; sequence_events
               ; call_data
               ; depth
+              ; use_full_commitment = ()
               }
             with exn -> Error (Exn.to_string exn))
           ~fields:

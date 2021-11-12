@@ -382,6 +382,7 @@ module Body = struct
           ; sequence_events : 'events
           ; call_data : 'call_data
           ; depth : 'int
+          ; use_full_commitment : 'bool
           }
         [@@deriving hlist, sexp, equal, yojson, hash, compare]
       end
@@ -447,6 +448,7 @@ module Body = struct
       ; sequence_events = []
       ; call_data = Field.zero
       ; depth = 0
+      ; use_full_commitment = ()
       }
   end
 
@@ -455,6 +457,7 @@ module Body = struct
       delta = { Signed_poly.sgn = Sgn.Neg; magnitude = Amount.of_fee t.delta }
     ; token_id = Token_id.default
     ; increment_nonce = true
+    ; use_full_commitment = true
     }
 
   module Checked = struct
@@ -479,6 +482,7 @@ module Body = struct
          ; sequence_events
          ; call_data
          ; depth = _depth (* ignored *)
+         ; use_full_commitment
          } :
           t) =
       List.reduce_exn ~f:Random_oracle_input.append
@@ -490,6 +494,7 @@ module Body = struct
         ; Events.var_to_input events
         ; Events.var_to_input sequence_events
         ; Random_oracle_input.field call_data
+        ; Random_oracle_input.bitstring [ use_full_commitment ]
         ]
 
     let digest (t : t) =
@@ -509,6 +514,7 @@ module Body = struct
       ; Events.typ
       ; Field.typ
       ; Typ.Internal.ref ()
+      ; Impl.Boolean.typ
       ]
       ~var_to_hlist:to_hlist ~var_of_hlist:of_hlist ~value_to_hlist:to_hlist
       ~value_of_hlist:of_hlist
@@ -523,6 +529,7 @@ module Body = struct
     ; sequence_events = []
     ; call_data = Field.zero
     ; depth = 0
+    ; use_full_commitment = false
     }
 
   let to_input
@@ -535,6 +542,7 @@ module Body = struct
        ; sequence_events
        ; call_data
        ; depth = _ (* ignored *)
+       ; use_full_commitment
        } :
         t) =
     List.reduce_exn ~f:Random_oracle_input.append
@@ -546,6 +554,7 @@ module Body = struct
       ; Events.to_input events
       ; Events.to_input sequence_events
       ; Random_oracle_input.field call_data
+      ; Random_oracle_input.bitstring [ use_full_commitment ]
       ]
 
   let digest (t : t) =
