@@ -1264,6 +1264,7 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
            ; call_data = _ (* This is for the snapp to use, we don't need it. *)
            ; sequence_events
            ; depth = _ (* This is used to build the 'stack of stacks'. *)
+           ; protocol_state = _ (* FIXME: should this be checked here? *)
            }
        ; predicate
        } :
@@ -1540,6 +1541,10 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
       include Token_id
 
       let if_ = Parties.value_if
+    end
+
+    module Protocol_state_predicate = struct
+      include Snapp_predicate.Protocol_state
     end
 
     module Party = Party
@@ -2539,6 +2544,7 @@ module For_tests = struct
                   ; sequence_events = []
                   ; call_data = Snark_params.Tick.Field.zero
                   ; depth = 0
+                  ; protocol_state = Snapp_predicate.Protocol_state.accept
                   }
               ; predicate = actual_nonce
               }
@@ -2556,6 +2562,7 @@ module For_tests = struct
                     ; sequence_events = []
                     ; call_data = Snark_params.Tick.Field.zero
                     ; depth = 0
+                    ; protocol_state = Snapp_predicate.Protocol_state.accept
                     }
                 ; predicate = Nonce (Account.Nonce.succ actual_nonce)
                 }
@@ -2571,6 +2578,7 @@ module For_tests = struct
                     ; sequence_events = []
                     ; call_data = Snark_params.Tick.Field.zero
                     ; depth = 0
+                    ; protocol_state = Snapp_predicate.Protocol_state.accept
                     }
                 ; predicate = Accept
                 }
