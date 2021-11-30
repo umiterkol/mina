@@ -8,3 +8,7 @@ let max_connections = 50
 let validation_queue_size = 150
 
 let conf_dir_name = ".mina-config"
+
+let pubsub_v1 = Gossip_net.Libp2p.RW
+
+let pubsub_v2 = Gossip_net.Libp2p.RW
