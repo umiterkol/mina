@@ -1,7 +1,7 @@
 [%%import "/src/config.mlh"]
 
 (* Only show stdout for failed inline tests. *)
-open Inline_test_quiet_logs
+(* open Inline_test_quiet_logs *)
 open Core_kernel
 open Async
 open Mina_base
@@ -2089,19 +2089,24 @@ let%test_module "test" =
          init_state to both. In the below tests we apply the same commands to
          the staged and test ledgers, and verify they are in the same state.
     *)
+    let async_with_given_ledger ledger
+        (f : Sl.t ref -> Ledger.Mask.Attached.t -> unit Deferred.t) =
+      let casted = Ledger.Any_ledger.cast (module Ledger) ledger in
+      let test_mask =
+        Ledger.Maskable.register_mask casted
+          (Ledger.Mask.create ~depth:(Ledger.depth ledger) ())
+      in
+      let sl = ref @@ Sl.create_exn ~constraint_constants ~ledger in
+      Async.Thread_safe.block_on_async_exn (fun () -> f sl test_mask) ;
+      ignore @@ Ledger.Maskable.unregister_mask_exn ~loc:__LOC__ test_mask
+
+    (* populate the ledger from an initial state before running the function *)
     let async_with_ledgers ledger_init_state
         (f : Sl.t ref -> Ledger.Mask.Attached.t -> unit Deferred.t) =
       Ledger.with_ephemeral_ledger ~depth:constraint_constants.ledger_depth
         ~f:(fun ledger ->
           Ledger.apply_initial_ledger_state ledger ledger_init_state ;
-          let casted = Ledger.Any_ledger.cast (module Ledger) ledger in
-          let test_mask =
-            Ledger.Maskable.register_mask casted
-              (Ledger.Mask.create ~depth:(Ledger.depth ledger) ())
-          in
-          let sl = ref @@ Sl.create_exn ~constraint_constants ~ledger in
-          Async.Thread_safe.block_on_async_exn (fun () -> f sl test_mask) ;
-          ignore @@ Ledger.Maskable.unregister_mask_exn ~loc:__LOC__ test_mask)
+          async_with_given_ledger ledger f)
 
     (* Assert the given staged ledger is in the correct state after applying
          the first n user commands passed to the given base ledger. Checks the
@@ -2151,7 +2156,8 @@ let%test_module "test" =
              ~f:(Ledger.get ledger))
       in
       (* Check the user accounts in the updated staged ledger are as
-           expected. *)
+         expected.
+      *)
       List.iter pks_to_check ~f:(fun pk ->
           let expect = get_account_exn test_ledger pk in
           let actual = get_account_exn (Sl.ledger staged_ledger) pk in
@@ -2330,9 +2336,8 @@ let%test_module "test" =
           iter_cmds_acc (List.drop cmds cmds_applied_count) counts_rest acc' f
 
     (** Generic test framework. *)
-
     let test_simple :
-           Ledger.init_state
+           Account_id.t list
         -> User_command.Valid.t list
         -> int option list
         -> Sl.t ref
@@ -2342,8 +2347,8 @@ let%test_module "test" =
         -> (   Transaction_snark_work.Statement.t
             -> Transaction_snark_work.Checked.t option)
         -> unit Deferred.t =
-     fun init_state cmds cmd_iters sl ?(expected_proof_count = None) test_mask
-         provers stmt_to_work ->
+     fun account_ids_to_check cmds cmd_iters sl ?(expected_proof_count = None)
+         test_mask provers stmt_to_work ->
       let%map total_ledger_proofs =
         iter_cmds_acc cmds cmd_iters 0
           (fun cmds_left count_opt cmds_this_iter proof_count ->
@@ -2378,7 +2383,7 @@ let%test_module "test" =
                 () ) ;
             let coinbase_cost = coinbase_cost diff in
             assert_ledger test_mask ~coinbase_cost !sl cmds_left
-              cmds_applied_this_iter (init_pks init_state) ;
+              cmds_applied_this_iter account_ids_to_check ;
             return (diff, proof_count'))
       in
       (*Should have enough blocks to generate at least expected_proof_count
@@ -2399,20 +2404,32 @@ let%test_module "test" =
       min_blocks_for_first_snarked_ledger_generic + n - 1
 
     (** Generator for when we always have enough commands to fill all slots. *)
-
     let gen_at_capacity :
         (Ledger.init_state * User_command.Valid.t list * int option list)
         Quickcheck.Generator.t =
       let open Quickcheck.Generator.Let_syntax in
       let%bind ledger_init_state = Ledger.gen_initial_ledger_state in
       let%bind iters = Int.gen_incl 1 (max_blocks_for_coverage 0) in
-      let total_cmds = transaction_capacity * iters in
+      let num_cmds = transaction_capacity * iters in
       let%bind cmds =
-        User_command.Valid.Gen.sequence ~length:total_cmds ~sign_type:`Real
+        User_command.Valid.Gen.sequence ~length:num_cmds ~sign_type:`Real
           ledger_init_state
       in
-      assert (List.length cmds = total_cmds) ;
+      assert (List.length cmds = num_cmds) ;
       return (ledger_init_state, cmds, List.init iters ~f:(Fn.const None))
+
+    let gen_snapps_at_capacity :
+        (Ledger.t * User_command.Valid.t list * int option list)
+        Quickcheck.Generator.t =
+      let open Quickcheck.Generator.Let_syntax in
+      let%bind iters = Int.gen_incl 1 (max_blocks_for_coverage 0) in
+      let num_snapps = transaction_capacity * iters in
+      let%bind snapps, ledger =
+        User_command_generators.sequence_parties_with_ledger ~length:num_snapps
+          ()
+      in
+      assert (List.length snapps = num_snapps) ;
+      return (ledger, snapps, List.init iters ~f:(Fn.const None))
 
     (*Same as gen_at_capacity except that the number of iterations[iters] is
       the function of [extra_block_count] and is same for all generated values*)
@@ -2465,9 +2482,10 @@ let%test_module "test" =
             * int option list] ~trials:1
         ~f:(fun (ledger_init_state, cmds, iters) ->
           async_with_ledgers ledger_init_state (fun sl test_mask ->
-              test_simple ledger_init_state cmds iters sl
-                ~expected_proof_count:(Some expected_proof_count) test_mask
-                `Many_provers stmt_to_work_random_prover))
+              test_simple
+                (init_pks ledger_init_state)
+                cmds iters sl ~expected_proof_count:(Some expected_proof_count)
+                test_mask `Many_provers stmt_to_work_random_prover))
 
     let%test_unit "Max throughput" =
       Quickcheck.test gen_at_capacity
@@ -2478,22 +2496,34 @@ let%test_module "test" =
             * int option list] ~trials:15
         ~f:(fun (ledger_init_state, cmds, iters) ->
           async_with_ledgers ledger_init_state (fun sl test_mask ->
-              test_simple ledger_init_state cmds iters sl test_mask
-                `Many_provers stmt_to_work_random_prover))
+              test_simple
+                (init_pks ledger_init_state)
+                cmds iters sl test_mask `Many_provers stmt_to_work_random_prover))
+
+    let%test_unit "Max_throughput (snapps)" =
+      Quickcheck.test gen_snapps_at_capacity ~f:(fun (ledger, snapps, iters) ->
+          async_with_given_ledger ledger (fun sl test_mask ->
+              let account_ids =
+                Ledger.accounts ledger |> Account_id.Set.to_list
+              in
+              test_simple account_ids snapps iters sl test_mask `Many_provers
+                stmt_to_work_random_prover))
 
     let%test_unit "Be able to include random number of commands" =
       Quickcheck.test (gen_below_capacity ()) ~trials:20
         ~f:(fun (ledger_init_state, cmds, iters) ->
           async_with_ledgers ledger_init_state (fun sl test_mask ->
-              test_simple ledger_init_state cmds iters sl test_mask
-                `Many_provers stmt_to_work_random_prover))
+              test_simple
+                (init_pks ledger_init_state)
+                cmds iters sl test_mask `Many_provers stmt_to_work_random_prover))
 
     let%test_unit "Be able to include random number of commands (One prover)" =
       Quickcheck.test (gen_below_capacity ()) ~trials:20
         ~f:(fun (ledger_init_state, cmds, iters) ->
           async_with_ledgers ledger_init_state (fun sl test_mask ->
-              test_simple ledger_init_state cmds iters sl test_mask `One_prover
-                stmt_to_work_one_prover))
+              test_simple
+                (init_pks ledger_init_state)
+                cmds iters sl test_mask `One_prover stmt_to_work_one_prover))
 
     let%test_unit "Zero proof-fee should not create a fee transfer" =
       let stmt_to_work_zero_fee stmts =
@@ -2509,8 +2539,8 @@ let%test_module "test" =
           async_with_ledgers ledger_init_state (fun sl test_mask ->
               let%map () =
                 test_simple ~expected_proof_count:(Some expected_proof_count)
-                  ledger_init_state cmds iters sl test_mask `One_prover
-                  stmt_to_work_zero_fee
+                  (init_pks ledger_init_state)
+                  cmds iters sl test_mask `One_prover stmt_to_work_zero_fee
               in
               assert (
                 Option.is_none

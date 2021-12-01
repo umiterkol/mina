@@ -488,6 +488,10 @@ module Make (Inputs : Inputs_intf) = struct
            ; inclusion_proof
            })
     in
+    Format.eprintf "STATE PRED: %B@."
+      (Caml.( = ) protocol_state_predicate_satisfied Bool.true_) ;
+    Format.eprintf "PRED: %B@." (Caml.( = ) predicate_satisfied Bool.true_) ;
+    Format.eprintf "UPDATE: %B@." (Caml.( = ) update_permitted Bool.true_) ;
     let party_succeeded =
       Bool.(
         protocol_state_predicate_satisfied &&& predicate_satisfied

@@ -237,8 +237,9 @@ let gen_predicate_from ?(succeed = true) ~account_id ~ledger =
             else return (Party.Predicate.Nonce (Account.Nonce.succ nonce)) )
 
 let gen_fee (account : Account.t) =
-  Currency.Fee.gen_incl Mina_compile_config.minimum_user_command_fee
-    Currency.(Amount.to_fee (Balance.to_amount account.balance))
+  let lo_fee = Mina_compile_config.minimum_user_command_fee in
+  let hi_fee = Currency.(Amount.to_fee (Balance.to_amount account.balance)) in
+  Currency.Fee.gen_incl lo_fee hi_fee
 
 let fee_to_amt fee = Currency.Amount.(Signed.of_unsigned (of_fee fee))
 
@@ -293,7 +294,6 @@ let gen_party_body (type a) ?account_id ?balances_tbl ?(new_account = false)
     failwith "gen_party_body: snapp_account but not new_account" ;
   (* fee payers have to be in the ledger *)
   assert (not (is_fee_payer && new_account)) ;
-  (*  let%bind token_id = gen_a in *)
   let%bind update = Party.Update.gen ~new_account () in
   let%bind account =
     if new_account then (

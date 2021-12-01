@@ -1166,6 +1166,7 @@ module Protocol_state = struct
          } :
           t) (s : View.t) =
     let open Or_error.Let_syntax in
+    Format.eprintf "PRED 1@." ;
     let epoch_ledger ({ hash; total_currency } : _ Epoch_ledger.Poly.t)
         (t : Epoch_ledger.Value.t) =
       let%bind () =
@@ -1178,6 +1179,7 @@ module Protocol_state = struct
       in
       ()
     in
+    Format.eprintf "PRED 2@." ;
     let epoch_data label
         ({ ledger; seed; start_checkpoint; lock_checkpoint; epoch_length } :
           _ Epoch_data.Poly.t) (t : _ Epoch_data.Poly.t) =
@@ -1198,42 +1200,52 @@ module Protocol_state = struct
       in
       ()
     in
+    Format.eprintf "PRED 3@." ;
     let%bind () =
       Hash.(check ~label:"snarked_ledger_hash" Tc.ledger_hash)
         snarked_ledger_hash s.snarked_ledger_hash
     in
+    Format.eprintf "PRED 4@." ;
     let%bind () =
       Numeric.(check ~label:"snarked_next_available_token" Tc.token_id)
         snarked_next_available_token s.snarked_next_available_token
     in
+    Format.eprintf "PRED 5@." ;
     let%bind () =
       Numeric.(check ~label:"timestamp" Tc.time) timestamp s.timestamp
     in
+    Format.eprintf "PRED 6@." ;
     let%bind () =
       Numeric.(check ~label:"blockchain_length" Tc.length)
         blockchain_length s.blockchain_length
     in
+    Format.eprintf "PRED 7@." ;
     let%bind () =
       Numeric.(check ~label:"min_window_density" Tc.length)
         min_window_density s.min_window_density
     in
     ignore last_vrf_output ;
     (* TODO: Decide whether to expose this *)
+    Format.eprintf "PRED 8@." ;
     let%bind () =
       Numeric.(check ~label:"total_currency" Tc.amount)
         total_currency s.total_currency
     in
+    Format.eprintf "PRED 9@." ;
     let%bind () =
       Numeric.(check ~label:"curr_global_slot" Tc.global_slot)
         global_slot_since_hard_fork s.global_slot_since_hard_fork
     in
+    Format.eprintf "PRED 10@." ;
     let%bind () =
       Numeric.(check ~label:"global_slot_since_genesis" Tc.global_slot)
         global_slot_since_genesis s.global_slot_since_genesis
     in
+    Format.eprintf "PRED 11@." ;
     let%bind () =
       epoch_data "staking_epoch_data" staking_epoch_data s.staking_epoch_data
     in
+    Format.eprintf "PRED 12@." ;
     let%map () =
       epoch_data "next_epoch_data" next_epoch_data s.next_epoch_data
     in

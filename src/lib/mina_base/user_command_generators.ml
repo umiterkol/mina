@@ -7,7 +7,7 @@
 open Core_kernel
 include User_command.Gen
 
-let parties () =
+let parties_with_ledger () =
   let open Quickcheck.Let_syntax in
   let open Signature_lib in
   (* Need a fee payer keypair, and max_other_parties * 2 keypairs, because
@@ -32,8 +32,13 @@ let parties () =
         Account_id.create (Public_key.compress public_key) Token_id.default)
   in
   let%bind balances =
+    (* min balance so that fee payer can at least pay the fee *)
+    let min_balance =
+      Mina_compile_config.minimum_user_command_fee |> Currency.Fee.to_int
+      |> Currency.Balance.of_int
+    in
     Quickcheck.Generator.list_with_length num_keypairs_in_ledger
-      Currency.Balance.gen
+      (Currency.Balance.gen_incl min_balance Currency.Balance.max_int)
   in
   let accounts =
     List.map2_exn account_ids balances ~f:(fun account_id balance ->
@@ -57,6 +62,43 @@ let parties () =
       | Ok (`Added, _) ->
           ()) ;
   let%bind protocol_state = Snapp_predicate.Protocol_state.gen in
-  Quickcheck.Generator.map
-    (Snapp_generators.gen_parties_from ~fee_payer_keypair ~keymap ~ledger
-       ~protocol_state ()) ~f:(fun parties -> User_command.Parties parties)
+  let%bind parties =
+    Quickcheck.Generator.map
+      (Snapp_generators.gen_parties_from ~fee_payer_keypair ~keymap ~ledger
+         ~protocol_state ()) ~f:(fun parties -> User_command.Parties parties)
+  in
+  (* include generated ledger in result *)
+  return (parties, ledger)
+
+let sequence_parties_with_ledger ?length () =
+  let open Quickcheck.Let_syntax in
+  let%bind length =
+    match length with
+    | Some n ->
+        return n
+    | None ->
+        Quickcheck.Generator.small_non_negative_int
+  in
+  let merge_ledger source_ledger target_ledger =
+    (* add all accounts in source to target *)
+    Ledger.iteri source_ledger ~f:(fun _ndx acct ->
+        let acct_id = Account_id.create acct.public_key acct.token_id in
+        match Ledger.get_or_create_account target_ledger acct_id acct with
+        | Ok (`Added, _) ->
+            ()
+        | Ok (`Existed, _) ->
+            failwith "Account already existed in target ledger"
+        | Error err ->
+            failwithf "Could not add account to target ledger: %s"
+              (Error.to_string_hum err) ())
+  in
+  let init_ledger = Ledger.create ~depth:20 () in
+  let rec go (partiess, acc_ledger) n =
+    if n <= 0 then return (List.rev partiess, acc_ledger)
+    else
+      let%bind parties, ledger = parties_with_ledger () in
+      let partiess' = parties :: partiess in
+      merge_ledger ledger acc_ledger ;
+      go (partiess', acc_ledger) (n - 1)
+  in
+  go ([], init_ledger) length
