@@ -640,13 +640,128 @@ let update_state =
        create_command ~keyfile ~fee ~nonce ~memo ~snapp_keyfile ~app_state))
 
 let update_snapp_uri =
-  Command.(async ~summary:"" (Param.return (fun () -> Deferred.unit)))
+  let create_command ~keyfile ~fee ~nonce ~memo ~snapp_keyfile ~snapp_uri () =
+    let open Deferred.Let_syntax in
+    let%bind keypair = Util.keypair_of_file keyfile in
+    let%bind snapp_account_keypair = Util.keypair_of_file snapp_keyfile in
+    let snapp_uri = Snapp_basic.Set_or_keep.Set snapp_uri in
+    let spec =
+      { Transaction_snark.For_tests.Spec.sender = (keypair, nonce)
+      ; fee
+      ; receivers = []
+      ; amount = Currency.Amount.zero
+      ; snapp_account_keypair
+      ; memo = Util.memo memo
+      ; new_snapp_account = false
+      ; snapp_update = { Party.Update.dummy with snapp_uri }
+      ; current_auth = Permissions.Auth_required.Proof
+      }
+    in
+    let%bind parties, vk =
+      Transaction_snark.For_tests.update_state ~constraint_constants spec
+    in
+    Util.print_snapp_transaction parties ;
+    let%map () =
+      gen_proof parties
+        ~snapp_account:
+          (Some
+             ( Signature_lib.Public_key.compress snapp_account_keypair.public_key
+             , vk ))
+    in
+    ()
+  in
+  Command.(
+    let open Let_syntax in
+    Command.async
+      ~summary:"Generate a snapp transaction that updates token symbol"
+      (let%map keyfile =
+         Param.flag "--fee-payer-key"
+           ~doc:
+             "KEYFILE Private key file for the fee payer of the transaction \
+              (should already be in the ledger)"
+           Param.(required string)
+       and fee = Flags.fee
+       and nonce = Flags.nonce
+       and snapp_keyfile =
+         Param.flag "--snapp-account-key"
+           ~doc:"KEYFILE Private key file to create a new snapp account"
+           Param.(required string)
+       and memo = Flags.memo
+       and snapp_uri =
+         Param.flag "--snapp-uri"
+           ~doc:"the string to be used as the updated snapp uri"
+           Param.(required string)
+       in
+       let fee = Option.value ~default:Flags.default_fee fee in
+       if Currency.Fee.(fee < Flags.min_fee) then
+         failwith
+           (sprintf "Fee must at least be %s"
+              (Currency.Fee.to_formatted_string Flags.min_fee)) ;
+       create_command ~keyfile ~fee ~nonce ~memo ~snapp_keyfile ~snapp_uri))
 
 let update_sequence_state =
   Command.(async ~summary:"" (Param.return (fun () -> Deferred.unit)))
 
 let update_token_symbol =
-  Command.(async ~summary:"" (Param.return (fun () -> Deferred.unit)))
+  let create_command ~keyfile ~fee ~nonce ~memo ~snapp_keyfile ~token_symbol ()
+      =
+    let open Deferred.Let_syntax in
+    let%bind keypair = Util.keypair_of_file keyfile in
+    let%bind snapp_account_keypair = Util.keypair_of_file snapp_keyfile in
+    let token_symbol = Snapp_basic.Set_or_keep.Set token_symbol in
+    let spec =
+      { Transaction_snark.For_tests.Spec.sender = (keypair, nonce)
+      ; fee
+      ; receivers = []
+      ; amount = Currency.Amount.zero
+      ; snapp_account_keypair
+      ; memo = Util.memo memo
+      ; new_snapp_account = false
+      ; snapp_update = { Party.Update.dummy with token_symbol }
+      ; current_auth = Permissions.Auth_required.Proof
+      }
+    in
+    let%bind parties, vk =
+      Transaction_snark.For_tests.update_state ~constraint_constants spec
+    in
+    Util.print_snapp_transaction parties ;
+    let%map () =
+      gen_proof parties
+        ~snapp_account:
+          (Some
+             ( Signature_lib.Public_key.compress snapp_account_keypair.public_key
+             , vk ))
+    in
+    ()
+  in
+  Command.(
+    let open Let_syntax in
+    Command.async
+      ~summary:"Generate a snapp transaction that updates token symbol"
+      (let%map keyfile =
+         Param.flag "--fee-payer-key"
+           ~doc:
+             "KEYFILE Private key file for the fee payer of the transaction \
+              (should already be in the ledger)"
+           Param.(required string)
+       and fee = Flags.fee
+       and nonce = Flags.nonce
+       and snapp_keyfile =
+         Param.flag "--snapp-account-key"
+           ~doc:"KEYFILE Private key file to create a new snapp account"
+           Param.(required string)
+       and memo = Flags.memo
+       and token_symbol =
+         Param.flag "--token-symbol"
+           ~doc:"the string to be used as the updated token symbol"
+           Param.(required string)
+       in
+       let fee = Option.value ~default:Flags.default_fee fee in
+       if Currency.Fee.(fee < Flags.min_fee) then
+         failwith
+           (sprintf "Fee must at least be %s"
+              (Currency.Fee.to_formatted_string Flags.min_fee)) ;
+       create_command ~keyfile ~fee ~nonce ~memo ~snapp_keyfile ~token_symbol))
 
 let update_permissions =
   let create_command ~keyfile ~fee ~nonce ~memo ~snapp_keyfile ~permissions
