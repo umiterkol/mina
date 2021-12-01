@@ -253,7 +253,7 @@ let gen_delta ?balances_tbl (account : Account.t) =
       *)
       let%map magnitude =
         Currency.Amount.gen_incl Currency.Amount.zero
-          (Currency.Amount.of_int 100_000_000_000_000)
+          (Currency.Amount.of_int 100_000_000_000)
       in
       Currency.Signed_poly.{ magnitude; sgn = Sgn.Pos }
   | Neg ->
@@ -307,6 +307,7 @@ let gen_party_body (type a) ?account_id ?balances_tbl ?(new_account = false)
             "gen_party_body: new_account is true, but available_public_keys \
              not provided"
       | Some available_pks ->
+          Format.eprintf "GEN NEW ACCT@." ;
           let%map account_with_gen_pk =
             Account.gen_with_constrained_balance ~low:10_000_000_000
               ~high:500_000_000_000
@@ -363,12 +364,14 @@ let gen_party_body (type a) ?account_id ?balances_tbl ?(new_account = false)
     else
       match account_id with
       | None ->
+          Format.eprintf "CHOOSE ACCT@." ;
           (* choose an account from the ledger *)
           let%map index =
             Int.gen_uniform_incl 0 (Ledger.num_accounts ledger - 1)
           in
           Ledger.get_at_index_exn ledger index
       | Some account_id -> (
+          Format.eprintf "USE EXISTING ACCT@." ;
           (* use given account from the ledger *)
           match Ledger.location_of_account ledger account_id with
           | None ->
@@ -405,6 +408,9 @@ let gen_party_body (type a) ?account_id ?balances_tbl ?(new_account = false)
           (delta : (Currency.Amount.t, Sgn.t) Currency.Signed_poly.t) =
         match delta.sgn with
         | Pos -> (
+            Format.eprintf "BAL: %s DELTA: %s@."
+              (Currency.Balance.to_string balance)
+              (Currency.Amount.to_string delta.magnitude) ;
             match Currency.Balance.add_amount balance delta.magnitude with
             | Some bal ->
                 bal
@@ -421,8 +427,10 @@ let gen_party_body (type a) ?account_id ?balances_tbl ?(new_account = false)
       Signature_lib.Public_key.Compressed.Table.change tbl pk ~f:(function
         | None ->
             (* new entry in table *)
+            Format.eprintf "NEW ENTRY@." ;
             Some (add_balance_and_delta account.balance delta)
         | Some balance ->
+            Format.eprintf "OLD ENTRY@." ;
             (* update entry in table *)
             Some (add_balance_and_delta balance delta)) ) ;
   let field_array_list_gen ~max_array_len ~max_list_len =

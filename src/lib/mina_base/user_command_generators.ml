@@ -7,6 +7,9 @@
 open Core_kernel
 include User_command.Gen
 
+(* using Precomputed_values depth introduces a cyclic dependency *)
+let ledger_depth = 20
+
 let parties_with_ledger () =
   let open Quickcheck.Let_syntax in
   let open Signature_lib in
@@ -37,17 +40,26 @@ let parties_with_ledger () =
       Mina_compile_config.minimum_user_command_fee |> Currency.Fee.to_int
       |> Currency.Balance.of_int
     in
+    (* max balance to avoid overflow when adding deltas *)
+    let max_balance =
+      match
+        Currency.Balance.add_amount min_balance
+          (Currency.Amount.of_int 1_000_000_000_000)
+      with
+      | None ->
+          failwith "parties_with_ledger: overflow for max_balance"
+      | Some bal ->
+          bal
+    in
     Quickcheck.Generator.list_with_length num_keypairs_in_ledger
-      (Currency.Balance.gen_incl min_balance Currency.Balance.max_int)
+      (Currency.Balance.gen_incl min_balance max_balance)
   in
   let accounts =
     List.map2_exn account_ids balances ~f:(fun account_id balance ->
         Account.create account_id balance)
   in
   let fee_payer_keypair = List.hd_exn keypairs in
-  (* using Precomputed_values depth introduces a cyclic dependency *)
-  let depth = 20 in
-  let ledger = Ledger.create ~depth () in
+  let ledger = Ledger.create ~depth:ledger_depth () in
   List.iter2_exn account_ids accounts ~f:(fun acct_id acct ->
       match Ledger.get_or_create_account ledger acct_id acct with
       | Error err ->
@@ -63,12 +75,11 @@ let parties_with_ledger () =
           ()) ;
   let%bind protocol_state = Snapp_predicate.Protocol_state.gen in
   let%bind parties =
-    Quickcheck.Generator.map
-      (Snapp_generators.gen_parties_from ~fee_payer_keypair ~keymap ~ledger
-         ~protocol_state ()) ~f:(fun parties -> User_command.Parties parties)
+    Snapp_generators.gen_parties_from ~fee_payer_keypair ~keymap ~ledger
+      ~protocol_state ()
   in
   (* include generated ledger in result *)
-  return (parties, ledger)
+  return (User_command.Parties parties, ledger)
 
 let sequence_parties_with_ledger ?length () =
   let open Quickcheck.Let_syntax in
@@ -92,7 +103,7 @@ let sequence_parties_with_ledger ?length () =
             failwithf "Could not add account to target ledger: %s"
               (Error.to_string_hum err) ())
   in
-  let init_ledger = Ledger.create ~depth:20 () in
+  let init_ledger = Ledger.create ~depth:ledger_depth () in
   let rec go (partiess, acc_ledger) n =
     if n <= 0 then return (List.rev partiess, acc_ledger)
     else

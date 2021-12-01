@@ -944,6 +944,7 @@ let gen_with_constrained_balance ~low ~high =
       (Currency.Balance.of_int low)
       (Currency.Balance.of_int high)
   in
+  Format.eprintf "CONSTRAINED BAL: %s@." (Currency.Balance.to_string balance) ;
   create (Account_id.create public_key token_id) balance
 
 let gen_timed =
